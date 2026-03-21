@@ -78,3 +78,20 @@ ds_ecmwf = run(
     output_path="outputs/test_elyeso_ecmwf.nc",
 )
 print(ds_ecmwf)
+
+# Test processing
+print("\n--- Processing ---")
+from forkairos.processing import bias_correct, regrid, resolution_guide
+
+resolution_guide()
+
+# Test regrid only (no reference dataset needed)
+from forkairos import get_provider, Domain
+domain = Domain(r"C:\Users\wings\Desktop\ECMWF_COURARD\SIG\ElYeso_Glaciares_V2.shp", buffer_km=5.0)
+provider = get_provider("open_meteo")
+ds = provider.download(domain, ["temperature_2m", "precipitation"], "2024-06-01", "2024-06-03", "1h")
+
+print(f"\nAntes del regrid: {dict(ds.sizes)}")
+ds_fine = regrid(ds, resolution=0.05)
+print(f"Después del regrid: {dict(ds_fine.sizes)}")
+print(ds_fine)
