@@ -116,7 +116,7 @@ def _qdm(
                     obs_val = np.interp(q, quantiles, obs_quantiles)
                     # Apply delta (QDM preserves relative change)
                     delta = mod_cell[t] - np.interp(q, quantiles, mod_quantiles)
-                    corrected.values[..., i, j][t] = obs_val + delta
+                    corrected.values[i, j, t] = obs_val + delta
 
         ds_out[var] = corrected
 
@@ -163,8 +163,6 @@ def regrid(
 
     new_lats = np.arange(south, north + resolution, resolution).round(6)
     new_lons = np.arange(west,  east  + resolution, resolution).round(6)
-
-    print(f"  {dem:20s} → {res}° (~{res * 111 * 1000:.0f} m)")
 
     ds_out = ds.interp(
         lat=new_lats,
