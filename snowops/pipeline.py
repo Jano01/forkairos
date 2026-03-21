@@ -6,14 +6,14 @@ from snowops.providers.base import BaseProvider
 from snowops.providers.open_meteo import OpenMeteoProvider
 from snowops.providers.era5 import ERA5Provider
 from snowops.providers.gfs import GFSProvider
-
+from snowops.providers.ecmwf_open import ECMWFOpenProvider
 
 PROVIDERS = {
     "open_meteo": OpenMeteoProvider,
     "era5":       ERA5Provider,
     "gfs":        GFSProvider,
+    "ecmwf_open": ECMWFOpenProvider,
 }
-
 
 def get_provider(name: str) -> BaseProvider:
     """

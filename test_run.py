@@ -60,3 +60,21 @@ ds_gfs = run(
     output_path="outputs/test_elyeso_gfs.nc",
 )
 print(ds_gfs)
+
+# Test ECMWF Open Data
+print("\n--- ECMWF Open Data ---")
+provider_ecmwf = get_provider("ecmwf_open")
+print("Variables:", list(provider_ecmwf.available_variables().keys()))
+print("Rango:", provider_ecmwf.available_date_range())
+
+ds_ecmwf = run(
+    shapefile=r"C:\Users\wings\Desktop\ECMWF_COURARD\SIG\ElYeso_Glaciares_V2.shp",
+    provider_name="ecmwf_open",
+    variables=["temperature_2m", "precipitation"],
+    start="2026-03-21",
+    end="2026-03-23",
+    freq="6h",
+    buffer_km=5.0,
+    output_path="outputs/test_elyeso_ecmwf.nc",
+)
+print(ds_ecmwf)
