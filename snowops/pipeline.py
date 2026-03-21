@@ -4,10 +4,12 @@ from pathlib import Path
 from snowops.domain import Domain
 from snowops.providers.base import BaseProvider
 from snowops.providers.open_meteo import OpenMeteoProvider
+from snowops.providers.era5 import ERA5Provider
 
 
 PROVIDERS = {
     "open_meteo": OpenMeteoProvider,
+    "era5":       ERA5Provider,
 }
 
 

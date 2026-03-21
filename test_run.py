@@ -24,3 +24,21 @@ ds = run(
 )
 
 print(ds)
+
+# Test ERA5
+print("\n--- ERA5 ---")
+provider_era5 = get_provider("era5")
+print("Variables:", list(provider_era5.available_variables().keys()))
+print("Rango:", provider_era5.available_date_range())
+
+ds_era5 = run(
+    shapefile=r"C:\Users\wings\Desktop\ECMWF_COURARD\SIG\ElYeso_Glaciares_V2.shp",
+    provider_name="era5",
+    variables=["temperature_2m", "precipitation"],
+    start="2024-06-01",
+    end="2024-06-03",
+    freq="1h",
+    buffer_km=5.0,
+    output_path="outputs/test_elyeso_era5.nc",
+)
+print(ds_era5)
