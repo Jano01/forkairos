@@ -1,12 +1,12 @@
-# snowops/providers/ecmwf_open.py
+# forkairos/providers/ecmwf_open.py
 import openmeteo_requests
 import requests_cache
 import pandas as pd
 import xarray as xr
 import numpy as np
 from retry_requests import retry
-from snowops.providers.base import BaseProvider
-from snowops.domain import Domain
+from forkairos.providers.base import BaseProvider
+from forkairos.domain import Domain
 
 
 class ECMWFOpenProvider(BaseProvider):

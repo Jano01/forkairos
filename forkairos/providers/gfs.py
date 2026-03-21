@@ -1,11 +1,11 @@
-# snowops/providers/gfs.py
+# forkairos/providers/gfs.py
 import requests
 import pandas as pd
 import xarray as xr
 import numpy as np
 from pathlib import Path
-from snowops.providers.base import BaseProvider
-from snowops.domain import Domain
+from forkairos.providers.base import BaseProvider
+from forkairos.domain import Domain
 
 
 class GFSProvider(BaseProvider):
@@ -25,7 +25,7 @@ class GFSProvider(BaseProvider):
         "snow_depth":           "Snow depth (m)",
     }
 
-    # Mapping snowops names → Open-Meteo GFS variable names
+    # Mapping forkairos names → Open-Meteo GFS variable names
     OPENMETEO_NAMES = {
         "temperature_2m":      "temperature_2m",
         "precipitation":       "precipitation",

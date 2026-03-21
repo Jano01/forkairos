@@ -1,10 +1,10 @@
-# snowops/providers/era5.py
+# forkairos/providers/era5.py
 import cdsapi
 import xarray as xr
 import numpy as np
 from pathlib import Path
-from snowops.providers.base import BaseProvider
-from snowops.domain import Domain
+from forkairos.providers.base import BaseProvider
+from forkairos.domain import Domain
 
 
 class ERA5Provider(BaseProvider):
@@ -26,7 +26,7 @@ class ERA5Provider(BaseProvider):
         "snow_cover":            "Fraction of snow cover (0-1)",
     }
 
-    # Mapping snowops variable names → CDS parameter names
+    # Mapping forkairos variable names → CDS parameter names
     CDS_NAMES = {
         "temperature_2m":      "2m_temperature",
         "precipitation":       "total_precipitation",
@@ -41,7 +41,7 @@ class ERA5Provider(BaseProvider):
         "snow_cover":          "fraction_of_snow_cover",
     }
 
-    # Mapping CDS short names (what ERA5 actually returns) → snowops names
+    # Mapping CDS short names (what ERA5 actually returns) → forkairos names
     CDS_SHORT_NAMES = {
         "t2m":   "temperature_2m",
         "tp":    "precipitation",
@@ -152,12 +152,12 @@ class ERA5Provider(BaseProvider):
         else:
             print(f"[era5] Using cached file: {output_file}")
 
-        # Load and rename short CDS names → snowops names
+        # Load and rename short CDS names → forkairos names
         ds = xr.open_dataset(output_file)
         rename_dict = {var: self.CDS_SHORT_NAMES[var] for var in ds.data_vars if var in self.CDS_SHORT_NAMES}
         ds = ds.rename(rename_dict)
 
-        # Rename coordinates to match snowops convention
+        # Rename coordinates to match forkairos convention
         coord_map = {}
         if "valid_time" in ds.coords:
             coord_map["valid_time"] = "time"

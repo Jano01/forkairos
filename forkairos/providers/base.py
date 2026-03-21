@@ -1,8 +1,8 @@
-# snowops/providers/base.py
+# forkairos/providers/base.py
 from abc import ABC, abstractmethod
 from typing import Any
 import xarray as xr
-from snowops.domain import Domain
+from forkairos.domain import Domain
 
 
 class BaseProvider(ABC):

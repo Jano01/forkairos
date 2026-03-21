@@ -1,5 +1,5 @@
 # test_run.py
-from snowops import run, get_provider
+from forkairos import run, get_provider
 
 # Ver qué variables están disponibles
 provider = get_provider("open_meteo")

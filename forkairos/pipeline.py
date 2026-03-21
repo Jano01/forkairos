@@ -1,12 +1,12 @@
-# snowops/pipeline.py
+# forkairos/pipeline.py
 import xarray as xr
 from pathlib import Path
-from snowops.domain import Domain
-from snowops.providers.base import BaseProvider
-from snowops.providers.open_meteo import OpenMeteoProvider
-from snowops.providers.era5 import ERA5Provider
-from snowops.providers.gfs import GFSProvider
-from snowops.providers.ecmwf_open import ECMWFOpenProvider
+from forkairos.domain import Domain
+from forkairos.providers.base import BaseProvider
+from forkairos.providers.open_meteo import OpenMeteoProvider
+from forkairos.providers.era5 import ERA5Provider
+from forkairos.providers.gfs import GFSProvider
+from forkairos.providers.ecmwf_open import ECMWFOpenProvider
 
 PROVIDERS = {
     "open_meteo": OpenMeteoProvider,
@@ -52,19 +52,19 @@ def run(
     buffer_km     : buffer around basin in km
     output_path   : path for the output NetCDF file
     """
-    print(f"[snowops] Loading domain from {shapefile}")
+    print(f"[forkairos] Loading domain from {shapefile}")
     domain = Domain(shapefile, buffer_km=buffer_km)
-    print(f"[snowops] {domain}")
+    print(f"[forkairos] {domain}")
 
-    print(f"[snowops] Provider: {provider_name}")
+    print(f"[forkairos] Provider: {provider_name}")
     provider = get_provider(provider_name)
 
-    print(f"[snowops] Downloading {variables} | {start} → {end} | {freq}")
+    print(f"[forkairos] Downloading {variables} | {start} → {end} | {freq}")
     ds = provider.download(domain, variables, start, end, freq)
 
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     ds.to_netcdf(output_path)
-    print(f"[snowops] Saved → {output_path}")
+    print(f"[forkairos] Saved → {output_path}")
 
     return ds
