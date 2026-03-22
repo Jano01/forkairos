@@ -75,18 +75,74 @@ Not all variables are available from every provider. Use `provider.available_var
 to check what is available before downloading.
 
 ## Optional post-processing
-```python
-from forkairos.processing import regrid, bias_correct, resolution_guide
 
-# See recommended resolutions based on DEM
+forkairos includes two optional post-processing steps that can be applied
+independently after downloading. Both are modular — new methods can be added
+as plugins in future versions.
+
+### Spatial regridding
+
+NWP data is typically available at coarse resolutions (0.25°, ~25 km). For
+hydrological applications over complex terrain such as the Andes, finer
+spatial resolution is often required.
+
+forkairos implements **bilinear interpolation** to regrid data to a
+user-specified target resolution. The target resolution should be chosen
+based on the digital elevation model (DEM) used in the downstream model.
+```python
+from forkairos.processing import regrid, resolution_guide
+
+# Print recommended resolutions based on common DEMs
 resolution_guide()
 
-# Regrid to finer resolution (bilinear interpolation)
+# Regrid to 0.05° (~5 km)
 ds_fine = regrid(ds, resolution=0.05)
+```
 
-# Bias correction using a reference dataset
+> **Note:** Bilinear interpolation does not account for topographic effects
+> on temperature lapse rates or orographic precipitation enhancement. For
+> applications requiring physically consistent downscaling, the regridded
+> output should be combined with a topographic correction scheme applied
+> externally (e.g. Liston & Elder, 2006; Fiddes & Gruber, 2014).
+
+### Bias correction
+
+NWP models exhibit systematic biases that can affect the performance of
+downstream hydrological models. forkairos implements **Quantile Delta
+Mapping (QDM)** (Cannon et al., 2015), a method that corrects the
+cumulative distribution function of model output while preserving the
+model's projected changes (deltas). QDM is preferred over standard
+Quantile Mapping (QM) because it does not distort model trends.
+
+The correction requires a reference observational dataset (e.g. CR2MET
+for the Andes, ERA5-Land for global applications) provided as a
+CF-compliant NetCDF file.
+```python
+from forkairos.processing import bias_correct
+
+# Load your reference dataset
+import xarray as xr
+ds_ref = xr.open_dataset("cr2met_reference.nc")
+
+# Apply QDM bias correction
 ds_corrected = bias_correct(ds, reference=ds_ref, method="qdm")
 ```
+
+**References**
+
+- Cannon, A. J., Sobie, S. R., & Murdock, T. Q. (2015). Bias correction of
+  GCM precipitation by quantile mapping: How well do methods preserve
+  changes in quantiles and extremes? *Journal of Climate*, 28(17), 6938–6959.
+  https://doi.org/10.1175/JCLI-D-14-00754.1
+
+- Fiddes, J., & Gruber, S. (2014). TopoSCALE v.1.0: downscaling gridded
+  climate data in complex terrain. *Geoscientific Model Development*, 7,
+  387–405. https://doi.org/10.5194/gmd-7-387-2014
+
+- Liston, G. E., & Elder, K. (2006). A meteorological distribution system
+  for high-resolution terrestrial modeling (MicroMet). *Journal of
+  Hydrometeorology*, 7(2), 217–234.
+  https://doi.org/10.1175/JHM486.1```
 
 ## ERA5 credentials
 
