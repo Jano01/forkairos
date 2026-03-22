@@ -107,42 +107,29 @@ ds_fine = regrid(ds, resolution=0.05)
 
 ### Bias correction
 
-NWP models exhibit systematic biases that can affect the performance of
-downstream hydrological models. forkairos implements **Quantile Delta
-Mapping (QDM)** (Cannon et al., 2015), a method that corrects the
-cumulative distribution function of model output while preserving the
-model's projected changes (deltas). QDM is preferred over standard
-Quantile Mapping (QM) because it does not distort model trends.
-
-The correction requires a reference observational dataset (e.g. CR2MET
-for the Andes, ERA5-Land for global applications) provided as a
-CF-compliant NetCDF file.
+For deterministic modelling applications requiring bias correction, forkairos
+provides an optional **MBCn (Multivariate Bias Correction)** module (Cannon, 2018).
+MBCn corrects all variables simultaneously while preserving their inter-variable
+dependence structure — preferable to univariate methods such as QDM which correct
+each variable independently and may distort physical relationships.
 ```python
 from forkairos.processing import bias_correct
 
-# Load your reference dataset
-import xarray as xr
-ds_ref = xr.open_dataset("cr2met_reference.nc")
-
-# Apply QDM bias correction
-ds_corrected = bias_correct(ds, reference=ds_ref, method="qdm")
+ds_ref = xr.open_dataset("reference_dataset.nc")  # e.g. CR2MET, ERA5-Land
+ds_corrected = bias_correct(ds, reference=ds_ref, method="mbcn")
 ```
+
+> **Note for data assimilation workflows:** bias correction of NWP forcings is
+> generally not recommended when forkairos feeds a DA pipeline. The assimilation
+> algorithm handles forcing uncertainty implicitly — applying statistical bias
+> correction beforehand may be redundant or counterproductive.
 
 **References**
 
-- Cannon, A. J., Sobie, S. R., & Murdock, T. Q. (2015). Bias correction of
-  GCM precipitation by quantile mapping: How well do methods preserve
-  changes in quantiles and extremes? *Journal of Climate*, 28(17), 6938–6959.
-  https://doi.org/10.1175/JCLI-D-14-00754.1
-
-- Fiddes, J., & Gruber, S. (2014). TopoSCALE v.1.0: downscaling gridded
-  climate data in complex terrain. *Geoscientific Model Development*, 7,
-  387–405. https://doi.org/10.5194/gmd-7-387-2014
-
-- Liston, G. E., & Elder, K. (2006). A meteorological distribution system
-  for high-resolution terrestrial modeling (MicroMet). *Journal of
-  Hydrometeorology*, 7(2), 217–234.
-  https://doi.org/10.1175/JHM486.1```
+- Cannon, A. J. (2018). Multivariate quantile mapping bias correction:
+  an N-dimensional probability density function transform for climate model
+  simulations of multiple variables. *Climate Dynamics*, 50(1), 31–49.
+  https://doi.org/10.1007/s00382-017-3580-6
 
 ## ERA5 credentials
 
