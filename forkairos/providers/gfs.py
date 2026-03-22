@@ -1,11 +1,10 @@
 # forkairos/providers/gfs.py
-import requests
 import pandas as pd
 import xarray as xr
 import numpy as np
-from pathlib import Path
 from forkairos.providers.base import BaseProvider
 from forkairos.domain import Domain
+from forkairos.vocabulary import CANONICAL_VARIABLES, get_variable_attrs
 
 
 class GFSProvider(BaseProvider):
@@ -13,42 +12,42 @@ class GFSProvider(BaseProvider):
     name = "gfs"
     mode = "forecast"
 
-    VARIABLES = {
-        "temperature_2m":       "Air temperature at 2m (°C)",
-        "precipitation":        "Total precipitation (kg/m²)",
-        "snowfall":             "Snowfall (kg/m²)",
-        "surface_pressure":     "Surface pressure (Pa)",
-        "wind_speed_10m_u":     "U-component of wind at 10m (m/s)",
-        "wind_speed_10m_v":     "V-component of wind at 10m (m/s)",
-        "relative_humidity":    "Relative humidity at 2m (%)",
-        "shortwave_radiation":  "Downward shortwave radiation (W/m²)",
-        "snow_depth":           "Snow depth (m)",
+    # Mapping canonical forkairos names → Open-Meteo GFS API names
+    NATIVE_NAMES = {
+        "temperature_2m":            "temperature_2m",
+        "dewpoint_2m":               "dew_point_2m",
+        "precipitation":             "precipitation",
+        "snowfall":                  "snowfall",
+        "snow_depth":                "snow_depth",
+        "relative_humidity_2m":      "relative_humidity_2m",
+        "wind_speed_10m":            "wind_speed_10m",
+        "wind_u_10m":                "wind_u_component_10m",
+        "wind_v_10m":                "wind_v_component_10m",
+        "wind_direction_10m":        "wind_direction_10m",
+        "surface_pressure":          "surface_pressure",
+        "shortwave_radiation":       "shortwave_radiation",
+        "longwave_radiation":        "terrestrial_radiation",
+        "cloud_cover":               "cloud_cover",
+        "geopotential_height_500hPa": "geopotential_height_500hPa",
+        "geopotential_height_700hPa": "geopotential_height_700hPa",
+        "geopotential_height_850hPa": "geopotential_height_850hPa",
     }
 
-    # Mapping forkairos names → Open-Meteo GFS variable names
-    OPENMETEO_NAMES = {
-        "temperature_2m":      "temperature_2m",
-        "precipitation":       "precipitation",
-        "snowfall":            "snowfall",
-        "surface_pressure":    "surface_pressure",
-        "wind_speed_10m_u":    "wind_u_component_10m",
-        "wind_speed_10m_v":    "wind_v_component_10m",
-        "relative_humidity":   "relative_humidity_2m",
-        "shortwave_radiation": "shortwave_radiation",
-        "snow_depth":          "snow_depth",
+    # Unit conversions: native → canonical
+    UNIT_CONVERSIONS = {
+        "wind_speed_10m": 1 / 3.6,  # km/h → m/s
+        "wind_u_10m":     1 / 3.6,  # km/h → m/s
+        "wind_v_10m":     1 / 3.6,  # km/h → m/s
     }
 
     FREQUENCIES = ["1h", "3h", "6h", "1d"]
-
-    # GFS via Open-Meteo forecast endpoint
-    FORECAST_URL  = "https://api.open-meteo.com/v1/gfs"
+    FORECAST_URL = "https://api.open-meteo.com/v1/gfs"
 
     def available_variables(self) -> dict[str, str]:
-        return self.VARIABLES
+        return {k: CANONICAL_VARIABLES[k]["description"] for k in self.NATIVE_NAMES}
 
     def available_date_range(self) -> tuple[str, str]:
         start = pd.Timestamp.today().strftime("%Y-%m-%d")
-        end   = (pd.Timestamp.today() + pd.Timedelta(days=15)).strftime("%Y-%m-%d")
         return (start, "present+16days")
 
     def available_frequencies(self) -> list[str]:
@@ -67,27 +66,22 @@ class GFSProvider(BaseProvider):
         import requests_cache
         from retry_requests import retry
 
-        # Validate inputs
         for v in variables:
-            if v not in self.VARIABLES:
-                raise ValueError(f"Variable '{v}' not available. Choose from: {list(self.VARIABLES)}")
+            if v not in self.NATIVE_NAMES:
+                raise ValueError(f"Variable '{v}' not available. Choose from: {list(self.NATIVE_NAMES)}")
         if freq not in self.FREQUENCIES:
             raise ValueError(f"Frequency '{freq}' not available. Choose from: {self.FREQUENCIES}")
 
-        # Translate variable names
-        om_vars = [self.OPENMETEO_NAMES[v] for v in variables]
+        native_vars = [self.NATIVE_NAMES[v] for v in variables]
 
-        # Build grid of points covering the bbox
         west, south, east, north = domain.bbox
         lats = np.arange(south, north + 0.25, 0.25).round(4)
         lons = np.arange(west,  east  + 0.25, 0.25).round(4)
 
-        # Setup client
         cache_session = requests_cache.CachedSession(".cache_gfs", expire_after=3600)
         retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
         client = openmeteo_requests.Client(session=retry_session)
 
-        # Download grid
         rows = []
         for lat in lats:
             cols = []
@@ -95,7 +89,7 @@ class GFSProvider(BaseProvider):
                 params = {
                     "latitude":   lat,
                     "longitude":  lon,
-                    "hourly":     om_vars,
+                    "hourly":     native_vars,
                     "start_date": start,
                     "end_date":   end,
                     "timezone":   "UTC",
@@ -113,7 +107,10 @@ class GFSProvider(BaseProvider):
 
                 data_vars = {}
                 for i, v in enumerate(variables):
-                    data_vars[v] = (["time"], hourly.Variables(i).ValuesAsNumpy())
+                    values = hourly.Variables(i).ValuesAsNumpy()
+                    if v in self.UNIT_CONVERSIONS:
+                        values = values * self.UNIT_CONVERSIONS[v]
+                    data_vars[v] = (["time"], values)
 
                 ds_point = xr.Dataset(
                     data_vars,
@@ -125,7 +122,10 @@ class GFSProvider(BaseProvider):
 
         ds = xr.concat(rows, dim="lat")
 
-        # CF-compliant metadata
+        # Apply CF-compliant attributes from canonical vocabulary
+        for v in variables:
+            ds[v].attrs = get_variable_attrs(v)
+
         ds["lat"].attrs  = {"units": "degrees_north", "standard_name": "latitude"}
         ds["lon"].attrs  = {"units": "degrees_east",  "standard_name": "longitude"}
         ds["time"].attrs = {"standard_name": "time"}

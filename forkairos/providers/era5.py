@@ -5,6 +5,7 @@ import numpy as np
 from pathlib import Path
 from forkairos.providers.base import BaseProvider
 from forkairos.domain import Domain
+from forkairos.vocabulary import CANONICAL_VARIABLES, get_variable_attrs
 
 
 class ERA5Provider(BaseProvider):
@@ -12,60 +13,59 @@ class ERA5Provider(BaseProvider):
     name = "era5"
     mode = "reanalysis"
 
-    VARIABLES = {
-        "temperature_2m":        "Air temperature at 2m (°C)",
-        "precipitation":         "Total precipitation (m)",
-        "snowfall":              "Snowfall (m of water equivalent)",
-        "snow_depth":            "Snow depth (m of water equivalent)",
-        "surface_pressure":      "Surface pressure (Pa)",
-        "wind_speed_10m_u":      "U-component of wind at 10m (m/s)",
-        "wind_speed_10m_v":      "V-component of wind at 10m (m/s)",
-        "relative_humidity":     "Relative humidity (%)",
-        "shortwave_radiation":   "Surface solar radiation downwards (J/m²)",
-        "longwave_radiation":    "Surface thermal radiation downwards (J/m²)",
-        "snow_cover":            "Fraction of snow cover (0-1)",
+    # Mapping canonical forkairos names → CDS API parameter names
+    NATIVE_NAMES = {
+        "temperature_2m":       "2m_temperature",
+        "dewpoint_2m":          "2m_dewpoint_temperature",
+        "precipitation":        "total_precipitation",
+        "snowfall":             "snowfall",
+        "snow_depth":           "snow_depth",
+        "wind_speed_10m":       None,   # derived from u/v
+        "wind_u_10m":           "10m_u_component_of_wind",
+        "wind_v_10m":           "10m_v_component_of_wind",
+        "wind_direction_10m":   None,   # derived from u/v
+        "surface_pressure":     "surface_pressure",
+        "shortwave_radiation":  "surface_solar_radiation_downwards",
+        "longwave_radiation":   "surface_thermal_radiation_downwards",
+        "cloud_cover":          "total_cloud_cover",
     }
 
-    # Mapping forkairos variable names → CDS parameter names
-    CDS_NAMES = {
-        "temperature_2m":      "2m_temperature",
-        "precipitation":       "total_precipitation",
-        "snowfall":            "snowfall",
-        "snow_depth":          "snow_depth",
-        "surface_pressure":    "surface_pressure",
-        "wind_speed_10m_u":    "10m_u_component_of_wind",
-        "wind_speed_10m_v":    "10m_v_component_of_wind",
-        "relative_humidity":   "relative_humidity",
-        "shortwave_radiation": "surface_solar_radiation_downwards",
-        "longwave_radiation":  "surface_thermal_radiation_downwards",
-        "snow_cover":          "fraction_of_snow_cover",
-    }
-
-    # Mapping CDS short names (what ERA5 actually returns) → forkairos names
+    # CDS short names → canonical forkairos names
     CDS_SHORT_NAMES = {
-        "t2m":   "temperature_2m",
-        "tp":    "precipitation",
-        "sf":    "snowfall",
-        "sd":    "snow_depth",
-        "sp":    "surface_pressure",
-        "u10":   "wind_speed_10m_u",
-        "v10":   "wind_speed_10m_v",
-        "r":     "relative_humidity",
-        "ssrd":  "shortwave_radiation",
-        "strd":  "longwave_radiation",
-        "fscov": "snow_cover",
+        "t2m":  "temperature_2m",
+        "d2m":  "dewpoint_2m",
+        "tp":   "precipitation",
+        "sf":   "snowfall",
+        "sd":   "snow_depth",
+        "r":    "relative_humidity_2m",
+        "u10":  "wind_u_10m",
+        "v10":  "wind_v_10m",
+        "sp":   "surface_pressure",
+        "ssrd": "shortwave_radiation",
+        "strd": "longwave_radiation",
+        "tcc":  "cloud_cover",
+    }
+
+    # Unit conversions: native ERA5 → canonical forkairos units
+    UNIT_CONVERSIONS = {
+        "precipitation":       1000.0,   # m → mm
+        "snowfall":            1000.0,   # m w.e. → mm w.e.
+        "surface_pressure":    0.01,     # Pa → hPa
+        "shortwave_radiation": 1 / 3600, # J/m² → W/m²
+        "longwave_radiation":  1 / 3600, # J/m² → W/m²
     }
 
     FREQUENCIES = ["1h"]
 
     def available_variables(self) -> dict[str, str]:
-        return self.VARIABLES
+        return {k: CANONICAL_VARIABLES[k]["description"]
+                for k in self.NATIVE_NAMES if self.NATIVE_NAMES[k] is not None}
 
     def available_date_range(self) -> tuple[str, str]:
         import pandas as pd
         end = (pd.Timestamp.today() - pd.DateOffset(months=3)).strftime("%Y-%m-%d")
         return ("1940-01-01", end)
-    
+
     def available_frequencies(self) -> list[str]:
         return self.FREQUENCIES
 
@@ -79,29 +79,23 @@ class ERA5Provider(BaseProvider):
         cache_dir: str | Path = ".cache_era5",
     ) -> xr.Dataset:
 
-        # Validate inputs
         for v in variables:
-            if v not in self.VARIABLES:
-                raise ValueError(f"Variable '{v}' not available. Choose from: {list(self.VARIABLES)}")
+            if v not in self.NATIVE_NAMES or self.NATIVE_NAMES[v] is None:
+                raise ValueError(f"Variable '{v}' not available. Choose from: {list(self.available_variables())}")
 
-        # Translate to CDS names
-        cds_vars = [self.CDS_NAMES[v] for v in variables]
+        cds_vars = [self.NATIVE_NAMES[v] for v in variables]
 
-        # Build date range
         import pandas as pd
-        dates = pd.date_range(start, end, freq="D")
+        dates  = pd.date_range(start, end, freq="D")
         years  = list(dict.fromkeys(str(d.year) for d in dates))
         months = list(dict.fromkeys(f"{d.month:02d}" for d in dates))
         days   = list(dict.fromkeys(f"{d.day:02d}" for d in dates))
 
-        # Bbox: CDS expects [north, west, south, east]
         west, south, east, north = domain.bbox
         area = [north, west, south, east]
 
-        # Download
         cache_dir = Path(cache_dir)
         cache_dir.mkdir(exist_ok=True)
-        zip_file   = cache_dir / f"era5_{'_'.join(variables)}_{start}_{end}.zip"
         output_file = cache_dir / f"era5_{'_'.join(variables)}_{start}_{end}.nc"
 
         if not output_file.exists():
@@ -109,8 +103,8 @@ class ERA5Provider(BaseProvider):
             partial_files = []
 
             for var_name, cds_var in zip(variables, cds_vars):
-                var_zip  = cache_dir / f"era5_{var_name}_{start}_{end}.zip"
-                var_nc   = cache_dir / f"era5_{var_name}_{start}_{end}.nc"
+                var_zip = cache_dir / f"era5_{var_name}_{start}_{end}.zip"
+                var_nc  = cache_dir / f"era5_{var_name}_{start}_{end}.nc"
                 partial_files.append(var_nc)
 
                 if not var_nc.exists():
@@ -124,7 +118,7 @@ class ERA5Provider(BaseProvider):
                             "day":          days,
                             "time":         [f"{h:02d}:00" for h in range(24)],
                             "area":         area,
-                            "format":       "netcdf",
+                            "data_format":  "netcdf",
                         },
                         str(var_zip),
                     )
@@ -137,27 +131,31 @@ class ERA5Provider(BaseProvider):
                             (cache_dir / nc_name).rename(var_nc)
                         var_zip.unlink()
                     else:
-                        # Already a NetCDF
                         var_zip.rename(var_nc)
                 else:
                     print(f"[era5] Using cached file: {var_nc}")
 
-            # Merge all variables into one dataset
             datasets = [xr.open_dataset(f) for f in partial_files]
             merged = xr.merge(datasets, compat="override")
             merged.to_netcdf(output_file)
             for ds_tmp in datasets:
                 ds_tmp.close()
-
         else:
             print(f"[era5] Using cached file: {output_file}")
 
-        # Load and rename short CDS names → forkairos names
         ds = xr.open_dataset(output_file)
-        rename_dict = {var: self.CDS_SHORT_NAMES[var] for var in ds.data_vars if var in self.CDS_SHORT_NAMES}
+
+        # Rename CDS short names → canonical forkairos names
+        rename_dict = {var: self.CDS_SHORT_NAMES[var]
+                       for var in ds.data_vars if var in self.CDS_SHORT_NAMES}
         ds = ds.rename(rename_dict)
 
-        # Rename coordinates to match forkairos convention
+        # Apply unit conversions
+        for v in ds.data_vars:
+            if v in self.UNIT_CONVERSIONS:
+                ds[v] = ds[v] * self.UNIT_CONVERSIONS[v]
+
+        # Rename coordinates
         coord_map = {}
         if "valid_time" in ds.coords:
             coord_map["valid_time"] = "time"
@@ -168,11 +166,18 @@ class ERA5Provider(BaseProvider):
         if coord_map:
             ds = ds.rename(coord_map)
 
-        # Drop auxiliary coords not needed
         for c in ["expver", "number"]:
             if c in ds.coords:
                 ds = ds.drop_vars(c)
 
+        # Apply CF-compliant attributes from canonical vocabulary
+        for v in ds.data_vars:
+            if v in CANONICAL_VARIABLES:
+                ds[v].attrs = get_variable_attrs(v)
+
+        ds["lat"].attrs  = {"units": "degrees_north", "standard_name": "latitude"}
+        ds["lon"].attrs  = {"units": "degrees_east",  "standard_name": "longitude"}
+        ds["time"].attrs = {"standard_name": "time"}
         ds.attrs = {
             "source":      "ERA5 reanalysis (Copernicus CDS)",
             "provider":    self.name,

@@ -7,6 +7,7 @@ import numpy as np
 from retry_requests import retry
 from forkairos.providers.base import BaseProvider
 from forkairos.domain import Domain
+from forkairos.vocabulary import CANONICAL_VARIABLES, get_variable_attrs
 
 
 class ECMWFOpenProvider(BaseProvider):
@@ -14,35 +15,38 @@ class ECMWFOpenProvider(BaseProvider):
     name = "ecmwf_open"
     mode = "forecast"
 
-    VARIABLES = {
-        "temperature_2m":      "Air temperature at 2m (°C)",
-        "precipitation":       "Total precipitation (mm)",
-        "snowfall":            "Snowfall (cm)",
-        "surface_pressure":    "Surface pressure (hPa)",
-        "wind_speed_10m_u":    "U-component of wind at 10m (km/h)",
-        "wind_speed_10m_v":    "V-component of wind at 10m (km/h)",
-        "shortwave_radiation": "Surface solar radiation downwards (W/m²)",
-        "snow_depth":          "Snow depth (m)",
-        "relative_humidity_2m": "Relative humidity at 2m (%)",
+    # Mapping canonical forkairos names → Open-Meteo ECMWF API names
+    NATIVE_NAMES = {
+        "temperature_2m":             "temperature_2m",
+        "dewpoint_2m":                "dew_point_2m",
+        "precipitation":              "precipitation",
+        "snowfall":                   "snowfall",
+        "snow_depth":                 "snow_depth",
+        "wind_speed_10m":             "wind_speed_10m",
+        "wind_u_10m":                 "wind_u_component_10m",
+        "wind_v_10m":                 "wind_v_component_10m",
+        "wind_direction_10m":         "wind_direction_10m",
+        "surface_pressure":           "surface_pressure",
+        "shortwave_radiation":        "shortwave_radiation",
+        "longwave_radiation":         "terrestrial_radiation",
+        "cloud_cover":                "cloud_cover",
+        "geopotential_height_500hPa": "geopotential_height_500hPa",
+        "geopotential_height_700hPa": "geopotential_height_700hPa",
+        "geopotential_height_850hPa": "geopotential_height_850hPa",
     }
 
-    OPENMETEO_NAMES = {
-        "temperature_2m":       "temperature_2m",
-        "precipitation":        "precipitation",
-        "snowfall":             "snowfall",
-        "surface_pressure":     "surface_pressure",
-        "wind_speed_10m_u":     "wind_u_component_10m",
-        "wind_speed_10m_v":     "wind_v_component_10m",
-        "shortwave_radiation":  "shortwave_radiation",
-        "snow_depth":           "snow_depth",
-        "relative_humidity_2m": "relative_humidity_2m",
+    # Unit conversions: native → canonical
+    UNIT_CONVERSIONS = {
+        "wind_speed_10m": 1 / 3.6,  # km/h → m/s
+        "wind_u_10m":     1 / 3.6,  # km/h → m/s
+        "wind_v_10m":     1 / 3.6,  # km/h → m/s
     }
 
     FREQUENCIES = ["1h", "3h", "6h"]
     FORECAST_URL = "https://api.open-meteo.com/v1/ecmwf"
 
     def available_variables(self) -> dict[str, str]:
-        return self.VARIABLES
+        return {k: CANONICAL_VARIABLES[k]["description"] for k in self.NATIVE_NAMES}
 
     def available_date_range(self) -> tuple[str, str]:
         start = pd.Timestamp.today().strftime("%Y-%m-%d")
@@ -61,12 +65,12 @@ class ECMWFOpenProvider(BaseProvider):
     ) -> xr.Dataset:
 
         for v in variables:
-            if v not in self.VARIABLES:
-                raise ValueError(f"Variable '{v}' not available. Choose from: {list(self.VARIABLES)}")
+            if v not in self.NATIVE_NAMES:
+                raise ValueError(f"Variable '{v}' not available. Choose from: {list(self.NATIVE_NAMES)}")
         if freq not in self.FREQUENCIES:
             raise ValueError(f"Frequency '{freq}' not available. Choose from: {self.FREQUENCIES}")
 
-        om_vars = [self.OPENMETEO_NAMES[v] for v in variables]
+        native_vars = [self.NATIVE_NAMES[v] for v in variables]
 
         west, south, east, north = domain.bbox
         lats = np.arange(south, north + 0.25, 0.25).round(4)
@@ -83,7 +87,7 @@ class ECMWFOpenProvider(BaseProvider):
                 params = {
                     "latitude":   lat,
                     "longitude":  lon,
-                    "hourly":     om_vars,
+                    "hourly":     native_vars,
                     "start_date": start,
                     "end_date":   end,
                     "timezone":   "UTC",
@@ -101,7 +105,10 @@ class ECMWFOpenProvider(BaseProvider):
 
                 data_vars = {}
                 for i, v in enumerate(variables):
-                    data_vars[v] = (["time"], hourly.Variables(i).ValuesAsNumpy())
+                    values = hourly.Variables(i).ValuesAsNumpy()
+                    if v in self.UNIT_CONVERSIONS:
+                        values = values * self.UNIT_CONVERSIONS[v]
+                    data_vars[v] = (["time"], values)
 
                 ds_point = xr.Dataset(
                     data_vars,
@@ -112,6 +119,10 @@ class ECMWFOpenProvider(BaseProvider):
             rows.append(xr.concat(cols, dim="lon"))
 
         ds = xr.concat(rows, dim="lat")
+
+        # Apply CF-compliant attributes from canonical vocabulary
+        for v in variables:
+            ds[v].attrs = get_variable_attrs(v)
 
         ds["lat"].attrs  = {"units": "degrees_north", "standard_name": "latitude"}
         ds["lon"].attrs  = {"units": "degrees_east",  "standard_name": "longitude"}
