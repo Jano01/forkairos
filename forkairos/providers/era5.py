@@ -14,16 +14,17 @@ class ERA5Provider(BaseProvider):
     mode = "reanalysis"
 
     # Mapping canonical forkairos names → CDS API parameter names
+    # None = derived variable, not downloaded directly
     NATIVE_NAMES = {
         "temperature_2m":       "2m_temperature",
         "dewpoint_2m":          "2m_dewpoint_temperature",
         "precipitation":        "total_precipitation",
         "snowfall":             "snowfall",
         "snow_depth":           "snow_depth",
-        "wind_speed_10m":       None,   # derived from u/v
         "wind_u_10m":           "10m_u_component_of_wind",
         "wind_v_10m":           "10m_v_component_of_wind",
-        "wind_direction_10m":   None,   # derived from u/v
+        "wind_speed_10m":       None,  # derived from wind_u_10m and wind_v_10m
+        "wind_direction_10m":   None,  # derived from wind_u_10m and wind_v_10m
         "surface_pressure":     "surface_pressure",
         "shortwave_radiation":  "surface_solar_radiation_downwards",
         "longwave_radiation":   "surface_thermal_radiation_downwards",
@@ -37,7 +38,6 @@ class ERA5Provider(BaseProvider):
         "tp":   "precipitation",
         "sf":   "snowfall",
         "sd":   "snow_depth",
-        "r":    "relative_humidity_2m",
         "u10":  "wind_u_10m",
         "v10":  "wind_v_10m",
         "sp":   "surface_pressure",
@@ -48,18 +48,19 @@ class ERA5Provider(BaseProvider):
 
     # Unit conversions: native ERA5 → canonical forkairos units
     UNIT_CONVERSIONS = {
-        "precipitation":       1000.0,   # m → mm
-        "snowfall":            1000.0,   # m w.e. → mm w.e.
-        "surface_pressure":    0.01,     # Pa → hPa
-        "shortwave_radiation": 1 / 3600, # J/m² → W/m²
-        "longwave_radiation":  1 / 3600, # J/m² → W/m²
+        "precipitation":       1000.0,    # m → mm
+        "snowfall":            1000.0,    # m w.e. → mm w.e.
+        "surface_pressure":    0.01,      # Pa → hPa
+        "shortwave_radiation": 1 / 3600,  # J/m² → W/m²
+        "longwave_radiation":  1 / 3600,  # J/m² → W/m²
     }
 
     FREQUENCIES = ["1h"]
 
+    DERIVED = {"wind_speed_10m", "wind_direction_10m"}
+
     def available_variables(self) -> dict[str, str]:
-        return {k: CANONICAL_VARIABLES[k]["description"]
-                for k in self.NATIVE_NAMES if self.NATIVE_NAMES[k] is not None}
+        return {k: CANONICAL_VARIABLES[k]["description"] for k in self.NATIVE_NAMES}
 
     def available_date_range(self) -> tuple[str, str]:
         import pandas as pd
@@ -79,11 +80,22 @@ class ERA5Provider(BaseProvider):
         cache_dir: str | Path = ".cache_era5",
     ) -> xr.Dataset:
 
+        # Validate all requested variables
         for v in variables:
-            if v not in self.NATIVE_NAMES or self.NATIVE_NAMES[v] is None:
-                raise ValueError(f"Variable '{v}' not available. Choose from: {list(self.available_variables())}")
+            if v not in self.NATIVE_NAMES:
+                raise ValueError(f"Variable '{v}' not available. Choose from: {list(self.NATIVE_NAMES)}")
 
-        cds_vars = [self.NATIVE_NAMES[v] for v in variables]
+        # Ensure u and v are downloaded when derived variables are requested
+        variables = list(variables)
+        if any(v in self.DERIVED for v in variables):
+            if "wind_u_10m" not in variables:
+                variables.append("wind_u_10m")
+            if "wind_v_10m" not in variables:
+                variables.append("wind_v_10m")
+
+        # Separate variables to download from derived variables
+        variables_to_download = [v for v in variables if v not in self.DERIVED]
+        cds_vars = [self.NATIVE_NAMES[v] for v in variables_to_download]
 
         import pandas as pd
         dates  = pd.date_range(start, end, freq="D")
@@ -96,13 +108,13 @@ class ERA5Provider(BaseProvider):
 
         cache_dir = Path(cache_dir)
         cache_dir.mkdir(exist_ok=True)
-        output_file = cache_dir / f"era5_{'_'.join(variables)}_{start}_{end}.nc"
+        output_file = cache_dir / f"era5_{'_'.join(variables_to_download)}_{start}_{end}.nc"
 
         if not output_file.exists():
             client = cdsapi.Client()
             partial_files = []
 
-            for var_name, cds_var in zip(variables, cds_vars):
+            for var_name, cds_var in zip(variables_to_download, cds_vars):
                 var_zip = cache_dir / f"era5_{var_name}_{start}_{end}.zip"
                 var_nc  = cache_dir / f"era5_{var_name}_{start}_{end}.nc"
                 partial_files.append(var_nc)
@@ -151,7 +163,7 @@ class ERA5Provider(BaseProvider):
         ds = ds.rename(rename_dict)
 
         # Apply unit conversions
-        for v in ds.data_vars:
+        for v in list(ds.data_vars):
             if v in self.UNIT_CONVERSIONS:
                 ds[v] = ds[v] * self.UNIT_CONVERSIONS[v]
 
@@ -169,6 +181,13 @@ class ERA5Provider(BaseProvider):
         for c in ["expver", "number"]:
             if c in ds.coords:
                 ds = ds.drop_vars(c)
+
+        # Derive wind_speed_10m and wind_direction_10m from u and v components
+        if "wind_u_10m" in ds.data_vars and "wind_v_10m" in ds.data_vars:
+            ds["wind_speed_10m"] = np.sqrt(ds["wind_u_10m"]**2 + ds["wind_v_10m"]**2)
+            ds["wind_direction_10m"] = (
+                270 - np.degrees(np.arctan2(ds["wind_v_10m"], ds["wind_u_10m"]))
+            ) % 360
 
         # Apply CF-compliant attributes from canonical vocabulary
         for v in ds.data_vars:
