@@ -37,23 +37,16 @@ def test_regrid_invalid_method(mock_dataset):
         regrid(mock_dataset, resolution=0.1, method="kriging")
 
 
-def test_bias_correct_output_shape(mock_dataset, mock_reference):
-    """Bias correction preserves dataset shape."""
-    ds_corrected = bias_correct(mock_dataset, mock_reference)
-    for var in mock_dataset.data_vars:
-        assert ds_corrected[var].shape == mock_dataset[var].shape
-
-
-def test_bias_correct_adds_metadata(mock_dataset, mock_reference):
-    """Bias correction adds attribute to dataset."""
-    ds_corrected = bias_correct(mock_dataset, mock_reference)
-    assert "bias_correction" in ds_corrected.attrs
+def test_bias_correct_raises_not_implemented(mock_dataset, mock_reference):
+    """bias_correct raises NotImplementedError — MBCn planned for v0.2.0."""
+    with pytest.raises(NotImplementedError):
+        bias_correct(mock_dataset, mock_reference)
 
 
 def test_bias_correct_invalid_method(mock_dataset, mock_reference):
-    """Bias correction raises ValueError for unknown method."""
+    """bias_correct raises ValueError for unknown method."""
     with pytest.raises(ValueError, match="Unknown method"):
-        bias_correct(mock_dataset, mock_reference, method="delta")
+        bias_correct(mock_dataset, mock_reference, method="qdm")
 
 
 def test_resolution_guide_runs(capsys):
