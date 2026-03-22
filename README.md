@@ -126,26 +126,10 @@ ds_corrected = bias_correct(ds, reference=ds_ref, method="mbcn")
 
 **References**
 
-<<<<<<< HEAD
 - Cannon, A. J. (2018). Multivariate quantile mapping bias correction:
   an N-dimensional probability density function transform for climate model
   simulations of multiple variables. *Climate Dynamics*, 50(1), 31–49.
   https://doi.org/10.1007/s00382-017-3580-6
-=======
-- Cannon, A. J., Sobie, S. R., & Murdock, T. Q. (2015). Bias correction of
-  GCM precipitation by quantile mapping: How well do methods preserve
-  changes in quantiles and extremes? *Journal of Climate*, 28(17), 6938–6959.
-  https://doi.org/10.1175/JCLI-D-14-00754.1
-
-- Fiddes, J., & Gruber, S. (2014). TopoSCALE v.1.0: downscaling gridded
-  climate data in complex terrain. *Geoscientific Model Development*, 7,
-  387–405. https://doi.org/10.5194/gmd-7-387-2014
-
-- Liston, G. E., & Elder, K. (2006). A meteorological distribution system
-  for high-resolution terrestrial modeling (MicroMet). *Journal of
-  Hydrometeorology*, 7(2), 217–234.
-  https://doi.org/10.1175/JHM486.1
->>>>>>> 75da7b3b796df18e3db67a673224a38d4b0ceb17
 
 ## ERA5 credentials
 
