@@ -142,7 +142,7 @@ ds_corrected = bias_correct(ds, reference=ds_ref, method="qdm")
 - Liston, G. E., & Elder, K. (2006). A meteorological distribution system
   for high-resolution terrestrial modeling (MicroMet). *Journal of
   Hydrometeorology*, 7(2), 217–234.
-  https://doi.org/10.1175/JHM486.1```
+  https://doi.org/10.1175/JHM486.1
 
 ## ERA5 credentials
 
